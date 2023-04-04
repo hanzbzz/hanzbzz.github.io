@@ -80,3 +80,15 @@ There is not much else to do on the website, so i move on to enumerating URLs wi
  - `/user.php` gives details about user such as username and email when provided with an id parameter
  - `/activate.php` seems to provde the account activation functionality, i need a valid activation code
 
+Since we have no way to guess the activation code, let's focus on the `includes` directory.
+<img src =../screenshots/htb-broscience/includes.png height=300px width=500px>
+
+Most of these files only display a blank page, as they are PHP and get executed when i try to view them. The only exception being the `img.php` file, that complains about missing parameter.
+```
+Error: Missing 'path' parameter.
+```
+If i leave the path parameter empty, i get an empty 200 response, and when i give it an image name from the `images` directory, it displays the image. This seems like potentionally a Local File Inclustion(LFI) vulnerability. Trying out a basic LFI payload returns an error:
+```
+❯ curl 'https://broscience.htb/includes/img.php?path=../../../../etc/passwd' -k
+<b>Error:</b> Attack detected.
+```
