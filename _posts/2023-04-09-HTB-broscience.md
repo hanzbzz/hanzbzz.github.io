@@ -458,3 +458,34 @@ uid=1000(bill) gid=1000(bill) euid=0(root) groups=1000(bill)
 bash-5.1# cat /root/root.txt 
 78f4458060020f3abfa97d510a983a6c
 ```
+
+## Fixing the vunerability
+I gained initial access because the code was vulnerable to LFI. This is the vulnerable code:
+```php
+<?php
+if (!isset($_GET['path'])) {
+    die('<b>Error:</b> Missing \'path\' parameter.');
+}
+
+// Check for LFI attacks
+$path = $_GET['path'];
+
+$badwords = array("../", "etc/passwd", ".ssh");
+foreach ($badwords as $badword) {
+    if (strpos($path, $badword) !== false) {
+        die('<b>Error:</b> Attack detected.');
+    }
+}
+
+// Normalize path
+$path = urldecode($path);
+
+// Return the image
+header('Content-Type: image/png');
+echo file_get_contents('/var/www/html/images/' . $path);
+?>
+```
+It first looks for 'bad words' inside the path parametr, and exitst if it contains any. If it doesn't, it will URL decode the path and return the file. The issue is that PHP URL decodes the elements in `$_GET` [automatically](https://www.php.net/manual/en/function.urldecode.php#refsect1-function.urldecode-notes). So when i sent the application a double URL encoded payload, PHP applied the first decoding, but `$path` was still URL encoded once, therfore it lookd like this '%20%35....' and the check for bad words passed. But then the second decoding was applied, and `$path` was in plain text form appended to the file path.
+To fix this we can:
+- Perform the URL decoding (if necessary) before checking for LFI attacks or
+- don't do the decoding at all since PHP decoded the request on its own.
