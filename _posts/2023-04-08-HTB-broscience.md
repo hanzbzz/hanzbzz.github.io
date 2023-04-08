@@ -53,15 +53,15 @@ I assume this is an SSH server written in Go, but i can't find any details about
 
 ## Website
 The website seems to be focused on providing information about various exercies.
-<img markdown="1" src=/assets/screenshots/htb-broscience/web.png />
+![Web page](/assets/screenshots/htb-broscience/web.png)
 
 There is a login page, and when i try to login with the admin:password credentials, i get a wrong credentials error message
 
-<img src=/assets/screenshots/htb-broscience/incorrect_creds.png height=300px width=600px />
+![Incorrect creds](/assets/screenshots/htb-broscience/incorrect_creds.png){: .height=300px .width=600px :}
 
 However, when trying admin:admin credentials, i get a different error message, saying the account is not activated
 
-<img src=/assets/screenshots/htb-broscience/not_activated.png height=300px width=600px>
+![Not activated](/assets/screenshots/htb-broscience/not_activated.png){: .height=300px .width=600px :}
 
 This may mean that admin:admin are the correct credentials, but admin hasn't activated their account yet.
 
@@ -95,7 +95,7 @@ There is not much else to do on the website, so i move on to enumerating URLs wi
 
 Since i can't guess the activation code, let's focus on the `includes` directory.
 
-<img src=/assets/screenshots/htb-broscience/includes.png height=300px width=500px>
+![Includes](/assets/screenshots/htb-broscience/includes.png){: .height=300px .width=500px :}
 
 Most of these files only display a blank page, as they are PHP and get executed when i try to view them. The only exception is the `img.php` file, that returns an error when opened.
 ```
@@ -109,7 +109,7 @@ If i leave the path parameter empty, i get an empty 200 response, and when i giv
 ```
 A filter appears to prevent me from using `../` to traverse the file system, and absolute paths like `/etc/passwd` don't work either. I try to URL encoding the payload, switching `/` to `\` and the PHP filter `php://filter/convert.base64-encode/path=/etc/passwd` but none of it works. There is an article on [HackTricks](https://book.hacktricks.xyz/pentesting-web/file-inclusion#encoding) that suggests double URL encoding the payload, and it works
 
-<img src=/assets/screenshots/htb-broscience/burp-lfi.png>
+![Burp](/assets/screenshots/htb-broscience/burp-lfi.png)
 
 I will note that there is a user called **bill**, and use this LFI to download all the files i saw in the gobuster scan and the files in the `includes` directory.
 
@@ -206,7 +206,7 @@ Username: jan508, password: password, activation link: https://broscience.htb/ac
 
 When i click the activation url, i get a success message, and i can login to the application with the provided credentials.
 
-<img src=/assets/screenshots/htb-broscience/web-logged.png>
+![Logged in](/assets/screenshots/htb-broscience/web-logged.png)
 
 Not much changed on the website, except i can now write comments on the posts and switch to a dark theme. I tried to do some SQL injection in the comments, but it didn't work, and i even have the source code to see that it is not really vulnerable.
 
