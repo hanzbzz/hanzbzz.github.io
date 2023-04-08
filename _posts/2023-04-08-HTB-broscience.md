@@ -54,7 +54,7 @@ I assume this is an SSH server written in Go, but i can't find any details about
 ## Website
 The website seems to be focused on providing information about various exercies.
 
-<img src=/assets/screenshots/htb-broscience/web.png>
+<img markdown="1" src=/assets/screenshots/htb-broscience/web.png>
 
 There is a login page, and when i try to login with the admin:password credentials, i get a wrong credentials error message
 
