@@ -1,18 +1,19 @@
 ---
 layout: post
 title: HTB BroScience
-subtitle: BroScience is a medium difficulty Linux machine
+subtitle: BroScience is a medium difficulty Linux machine realeased on HackTheBox.
 cover-img: /assets/covers/BroScience.png
 share-img: /assets/covers/BroScience.png
 tags: [HTB, HackTheBox, Linux, PHP, deserialization, bash, LFI]
 comments: true
 ---
-Let's start off with nmap scan as per usual.
+
 ## Recon
+Let's start off with nmap scan as per usual:
 ```bash
 ❯ nmap 10.10.11.195 -sC -oN broscience.nmap -p-
 ```
-The results
+The results:
 ```
 Starting Nmap 7.93 ( https://nmap.org ) at 2023-04-04 21:24 CEST
 Nmap scan report for 10.10.11.195
