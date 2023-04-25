@@ -3,7 +3,7 @@ layout: post
 title: HTB Investigation
 cover-img: /assets/covers/Investigation.png
 excerpt_separator: <!--more-->
-tags: [HTB, HackTheBox]
+tags: [HTB, HackTheBox, CVE, forensics, logs, linux, reversing]
 comments: true
 ---
 Investigation is a medium-difficulty machine released on HackTheBox.

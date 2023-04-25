@@ -3,7 +3,7 @@ layout: post
 title: HTB BroScience
 cover-img: /assets/covers/BroScience.png
 excerpt_separator: <!--more-->
-tags: [HTB, HackTheBox, Linux, PHP, deserialization, bash, LFI]
+tags: [HTB, HackTheBox, linux, PHP, deserialization, bash, LFI]
 comments: true
 ---
 BroScience is a medium difficulty Linux machine realeased on HackTheBox.
