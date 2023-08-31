@@ -1,5 +1,15 @@
+---
+layout: post
+title: VulnLab Reflection
+cover-img: /assets/covers/reflection.png
+excerpt_separator: <!--more-->
+tags: [VulnLab, Windows, Active Directory, NTLM relay, MSSQL, ACL]
+comments: true
+---
+Reflection is a chain of three machines on the VulnLab platform marked as medium difficulty. 
+<!--more-->
 ## Recon
-Reflection is a chain of machines on the VulnLab platform marked as medium difficulty. Once i spawn the chain, i get 3 IP's:
+Once i spawn the chain, i get 3 IP's:
 - 10.10.194.213
 - 10.10.194.214
 - 10.10.194.215

