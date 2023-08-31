@@ -1,9 +1,9 @@
 ---
 layout: post
-title: HTB BroScience
-cover-img: /assets/covers/BroScience.png
+title: HTB MailRoom
+cover-img: /assets/covers/mailroom.png
 excerpt_separator: <!--more-->
-tags: [HTB, HackTheBox, Linux, PHP, deserialization, bash, LFI]
+tags: [HTB, HackTheBox, Linux, JavaScript, XSS, Git, NoSQL injection, KeePass]
 comments: true
 ---
 MailRoom is a hard difficulty Linux machine realeased on HackTheBox.
